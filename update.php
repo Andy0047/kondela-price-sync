@@ -20,7 +20,7 @@ const CONFIG = [
     'batchPauseMs'     => 200,
     'timeoutSeconds'   => 30,
     'verifySSL'        => true,
-    'dryRun'           => false,
+    'dryRun'           => true,
     'timezone'         => 'Europe/Kyiv',
 ];
 // ===================================================
@@ -179,16 +179,22 @@ function chunk_array(array $items, int $size): array {
 load_env_file(__DIR__ . '/.env');
 $company = getenv('PRODBOARD_COMPANY') ?: CONFIG['company'];
 $privateKey = getenv('PRODBOARD_PRIVATE_KEY') ?: CONFIG['privateKey'];
+$sourceUrl = getenv('SYNC_SOURCE_URL') ?: CONFIG['sourceUrl'];
+$cacheFile = getenv('SYNC_CACHE_FILE') ?: CONFIG['cacheFile'];
+$logFile = getenv('SYNC_LOG_FILE') ?: CONFIG['logFile'];
+$priceListCode = getenv('SYNC_PRICE_LIST_CODE') ?: CONFIG['priceListCode'];
+$dryRunRaw = getenv('SYNC_DRY_RUN');
+$dryRun = $dryRunRaw === false ? CONFIG['dryRun'] : filter_var($dryRunRaw, FILTER_VALIDATE_BOOLEAN);
 if ($company === '' || $privateKey === '') {
-    log_prepend(CONFIG['logFile'], 'ERROR auth config: missing PRODBOARD_COMPANY or PRODBOARD_PRIVATE_KEY');
+    log_prepend($logFile, 'ERROR auth config: missing PRODBOARD_COMPANY or PRODBOARD_PRIVATE_KEY');
     exit(4);
 }
 
 // 1️⃣ Получаем XML
 try {
-    $xml = fetch_xml(CONFIG['sourceUrl'], CONFIG['timeoutSeconds'], CONFIG['verifySSL']);
+    $xml = fetch_xml($sourceUrl, CONFIG['timeoutSeconds'], CONFIG['verifySSL']);
 } catch (Throwable $e) {
-    log_prepend(CONFIG['logFile'], "ERROR fetch: " . $e->getMessage());
+    log_prepend($logFile, "ERROR fetch: " . $e->getMessage());
     exit(2);
 }
 
@@ -196,13 +202,13 @@ try {
 try {
     $source = parse_prices_from_xml($xml);
 } catch (Throwable $e) {
-    log_prepend(CONFIG['logFile'], "ERROR parse: " . $e->getMessage());
+    log_prepend($logFile, "ERROR parse: " . $e->getMessage());
     exit(3);
 }
 $totalSkus = count($source);
 
 // 3️⃣ Загружаем кэш
-$cache = load_cache(CONFIG['cacheFile']);
+$cache = load_cache($cacheFile);
 
 // 4️⃣ Авторизация
 $authResp = http_request_json(
@@ -214,11 +220,11 @@ $authResp = http_request_json(
     CONFIG['verifySSL']
 );
 if (!$authResp['ok']) {
-    log_prepend(CONFIG['logFile'], "ERROR auth HTTP={$authResp['status']} RESP={$authResp['raw']}");
+    log_prepend($logFile, "ERROR auth HTTP={$authResp['status']} RESP={$authResp['raw']}");
     exit(4);
 }
 $token = trim($authResp['raw'], "\" \n\r\t");
-log_prepend(CONFIG['logFile'], "OK auth | token length=" . strlen($token));
+log_prepend($logFile, "OK auth | token length=" . strlen($token));
 
 // 5️⃣ Получаем список всех существующих товаров
 $existing = [];
@@ -234,7 +240,7 @@ while (true) {
         CONFIG['verifySSL']
     );
     if (!$resp['ok']) {
-        log_prepend(CONFIG['logFile'], "ERROR products page#$page HTTP={$resp['status']}");
+        log_prepend($logFile, "ERROR products page#$page HTTP={$resp['status']}");
         break;
     }
     $data = json_decode($resp['raw'], true);
@@ -248,7 +254,7 @@ while (true) {
     if (count($data['items']) < 100) break;
 }
 $totalExisting = count($existing);
-log_prepend(CONFIG['logFile'], "OK fetched products | total existing=$totalExisting");
+log_prepend($logFile, "OK fetched products | total existing=$totalExisting");
 
 // 6️⃣ Сравниваем данные
 $updates = [];
@@ -270,8 +276,8 @@ foreach ($source as $sku => $price) {
 
 $totalUpdated = count($updates);
 if ($totalUpdated === 0) {
-    log_prepend(CONFIG['logFile'], "OK no changes | Total SKUs=$totalSkus | Existing=$totalExisting");
-    if (!file_exists(CONFIG['cacheFile'])) save_cache(CONFIG['cacheFile'], $source);
+    log_prepend($logFile, "OK no changes | Total SKUs=$totalSkus | Existing=$totalExisting");
+    if (!file_exists($cacheFile)) save_cache($cacheFile, $source);
     exit(0);
 }
 
@@ -281,7 +287,7 @@ $sentCount = 0;
 $failed = 0;
 
 foreach ($batches as $idx => $batch) {
-    if (CONFIG['dryRun']) {
+    if ($dryRun) {
         $sentCount += count($batch);
         continue;
     }
@@ -291,7 +297,7 @@ foreach ($batches as $idx => $batch) {
 
     $resp = http_request_json(
         'POST',
-        CONFIG['apiBase'] . '/pricing/price-lists/' . rawurlencode(CONFIG['priceListCode']) . '/lines',
+        CONFIG['apiBase'] . '/pricing/price-lists/' . rawurlencode($priceListCode) . '/lines',
         $batch, // 👈 просто массив, без поля "lines"
         ['Authorization: Bearer ' . $token, 'accept: */*'],
         CONFIG['timeoutSeconds'],
@@ -304,10 +310,10 @@ foreach ($batches as $idx => $batch) {
         $raw = trim($resp['raw']);
         if ($status === 422 && stripos($raw, 'entity-not-found') !== false) {
             $failed += count($batch);
-            log_prepend(CONFIG['logFile'], "WARN missing product: " . $batch[0]['product']);
+            log_prepend($logFile, "WARN missing product: " . $batch[0]['product']);
             continue;
         }
-        log_prepend(CONFIG['logFile'], "ERROR push batch#" . ($idx + 1) . " HTTP=$status RESP=$raw");
+        log_prepend($logFile, "ERROR push batch#" . ($idx + 1) . " HTTP=$status RESP=$raw");
         continue;
     }
 
@@ -316,10 +322,10 @@ foreach ($batches as $idx => $batch) {
 }
 
 // 8️⃣ Обновляем кэш и лог
-save_cache(CONFIG['cacheFile'], $source);
+save_cache($cacheFile, $source);
 
 log_prepend(
-    CONFIG['logFile'],
+    $logFile,
     "OK updated | Total SKUs=$totalSkus | Existing=$totalExisting | Total Updated=$totalUpdated | Sent=$sentCount | Missing=$missing | Failed=$failed"
 );
 

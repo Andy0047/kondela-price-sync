@@ -20,7 +20,7 @@ const CONFIG = [
     'batchPauseMs'     => 200,
     'timeoutSeconds'   => 30,
     'verifySSL'        => true,
-    'dryRun'           => false,
+    'dryRun'           => true,
     'timezone'         => 'Europe/Kyiv',
 ];
 // ===================================================
