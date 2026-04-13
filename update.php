@@ -277,6 +277,7 @@ foreach ($source as $sku => $price) {
 $totalUpdated = count($updates);
 if ($totalUpdated === 0) {
     log_prepend($logFile, "OK no changes | Total SKUs=$totalSkus | Existing=$totalExisting");
+    log_prepend($logFile, "SK vysvetlenie: Beh je v poriadku, prihlasenie a nacitanie produktov prebehlo uspesne, ale nebola najdena ziadna zmena cien na odoslanie.");
     if (!file_exists($cacheFile)) save_cache($cacheFile, $source);
     exit(0);
 }
@@ -327,6 +328,10 @@ save_cache($cacheFile, $source);
 log_prepend(
     $logFile,
     "OK updated | Total SKUs=$totalSkus | Existing=$totalExisting | Total Updated=$totalUpdated | Sent=$sentCount | Missing=$missing | Failed=$failed"
+);
+log_prepend(
+    $logFile,
+    "SK vysvetlenie: Beh je v poriadku, ceny boli porovnane a zmenene polozky boli odoslane do cennika. Hodnota Sent znamena pocet uspesne odoslanych riadkov."
 );
 
 exit(0);
