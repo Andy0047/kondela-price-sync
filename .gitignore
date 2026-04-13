@@ -1,0 +1,11 @@
+# logs
+*.log
+
+# runtime cache
+*_cache*.json
+
+# local test files
+test.xml
+
+# env
+.env
