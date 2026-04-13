@@ -185,6 +185,8 @@ $logFile = getenv('SYNC_LOG_FILE') ?: CONFIG['logFile'];
 $priceListCode = getenv('SYNC_PRICE_LIST_CODE') ?: CONFIG['priceListCode'];
 $dryRunRaw = getenv('SYNC_DRY_RUN');
 $dryRun = $dryRunRaw === false ? CONFIG['dryRun'] : filter_var($dryRunRaw, FILTER_VALIDATE_BOOLEAN);
+$forceAllRaw = getenv('SYNC_FORCE_ALL');
+$forceAll = $forceAllRaw !== false && filter_var($forceAllRaw, FILTER_VALIDATE_BOOLEAN);
 if ($company === '' || $privateKey === '') {
     log_prepend($logFile, 'ERROR auth config: missing PRODBOARD_COMPANY or PRODBOARD_PRIVATE_KEY');
     exit(4);
@@ -266,7 +268,7 @@ foreach ($source as $sku => $price) {
         continue;
     }
     $old = $cache[$sku] ?? null;
-    if ($old === null || abs(((float)$old) - $price) > 0.00001) {
+    if ($forceAll || $old === null || abs(((float)$old) - $price) > 0.00001) {
         $updates[] = [
             'product'   => (string)$sku,
             'unitPrice' => round($price, 2),
@@ -329,6 +331,9 @@ log_prepend(
     $logFile,
     "OK updated | Total SKUs=$totalSkus | Existing=$totalExisting | Total Updated=$totalUpdated | Sent=$sentCount | Missing=$missing | Failed=$failed"
 );
+if ($forceAll) {
+    log_prepend($logFile, "SK vysvetlenie: Bezi force rezim, skript odosiela vsetky ceny z feedu bez porovnavania s cache.");
+}
 log_prepend(
     $logFile,
     "SK vysvetlenie: Beh je v poriadku, ceny boli porovnane a zmenene polozky boli odoslane do cennika. Hodnota Sent znamena pocet uspesne odoslanych riadkov."
