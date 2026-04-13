@@ -21,7 +21,7 @@ const CONFIG = [
     'timeoutSeconds'   => 30,
     'verifySSL'        => true,
     'dryRun'           => true,
-    'timezone'         => 'Europe/Kyiv',
+    'timezone'         => 'Europe/Bratislava',
 ];
 // ===================================================
 
