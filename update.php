@@ -124,6 +124,18 @@ function fetch_xml(string $url, int $timeout = 30, bool $verifySSL = true): stri
     return $resp;
 }
 
+function resolve_price_node_name(string $priceListCode): string {
+    $map = [
+        'price_ron' => 'MOC_RO',
+        'price_czk' => 'MOC_CZ',
+        'price_huf' => 'MOC_HU',
+        'price'     => 'MOC_EUR',
+        'price_test'=> 'MOC_EUR',
+    ];
+
+    return $map[$priceListCode] ?? 'MOC_EUR';
+}
+
 function parse_prices_from_xml(string $xmlText, string $priceListCode): array {
     libxml_use_internal_errors(true);
     $xml = simplexml_load_string($xmlText);
@@ -133,7 +145,7 @@ function parse_prices_from_xml(string $xmlText, string $priceListCode): array {
     }
     $result = [];
     $products = $xml->xpath('//PRODUKT');
-    $priceNodeName = $priceListCode === 'price_ron' ? 'MOC_RO' : 'MOC_EUR';
+    $priceNodeName = resolve_price_node_name($priceListCode);
     foreach ($products as $p) {
         $skuNode   = $p->KOD_TOVARU ?? null;
         $priceNode = $p->{$priceNodeName} ?? null;
