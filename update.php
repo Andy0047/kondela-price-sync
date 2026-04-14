@@ -175,6 +175,47 @@ function chunk_array(array $items, int $size): array {
     return array_chunk($items, $size);
 }
 
+function count_price_list_lines(string $apiBase, string $priceListCode, string $token, int $timeout, bool $verifySSL): ?int {
+    $total = 0;
+    $page = 0;
+
+    while (true) {
+        $url = $apiBase . '/pricing/price-lists/' . rawurlencode($priceListCode) . '/lines?pageIndex=' . $page;
+        $resp = http_request_json(
+            'GET',
+            $url,
+            null,
+            ['accept: application/json', 'Authorization: Bearer ' . $token],
+            $timeout,
+            $verifySSL
+        );
+        if (!$resp['ok']) {
+            return null;
+        }
+
+        $data = json_decode((string)$resp['raw'], true);
+        if (is_array($data) && isset($data['items']) && is_array($data['items'])) {
+            $items = $data['items'];
+            $count = count($items);
+            $total += $count;
+            if ($count < 100) {
+                break;
+            }
+            $page++;
+            continue;
+        }
+
+        if (is_array($data)) {
+            $total += count($data);
+            break;
+        }
+
+        return null;
+    }
+
+    return $total;
+}
+
 /** ------------ MAIN ------------- */
 
 load_env_file(__DIR__ . '/.env');
@@ -233,6 +274,19 @@ if (!$authResp['ok']) {
 $token = trim($authResp['raw'], "\" \n\r\t");
 $log("OK auth | token length=" . strlen($token));
 
+$priceListLinesCurrent = count_price_list_lines(
+    CONFIG['apiBase'],
+    $priceListCode,
+    $token,
+    CONFIG['timeoutSeconds'],
+    CONFIG['verifySSL']
+);
+if ($priceListLinesCurrent === null) {
+    $log("WARN price list lines count unavailable | priceList=$priceListCode");
+} else {
+    $log("OK price list lines | count=$priceListLinesCurrent");
+}
+
 // 5️⃣ Получаем список всех существующих товаров
 $existing = [];
 $page = 0;
@@ -261,7 +315,7 @@ while (true) {
     if (count($data['items']) < 100) break;
 }
 $totalExisting = count($existing);
-$log("OK fetched products | total existing=$totalExisting");
+$log("OK fetched products | existingProductsGlobal=$totalExisting");
 
 // 6️⃣ Сравниваем данные
 $updates = [];
@@ -283,7 +337,8 @@ foreach ($source as $sku => $price) {
 
 $totalUpdated = count($updates);
 if ($totalUpdated === 0) {
-    $log("OK no changes | Total SKUs=$totalSkus | Existing=$totalExisting");
+    $linesCountLog = $priceListLinesCurrent === null ? 'unknown' : (string)$priceListLinesCurrent;
+    $log("OK no changes | Total SKUs=$totalSkus | ExistingProductsGlobal=$totalExisting | PriceListLinesCurrent=$linesCountLog");
     $log("SK vysvetlenie: Beh je v poriadku, prihlasenie a nacitanie produktov prebehlo uspesne, ale nebola najdena ziadna zmena cien na odoslanie.");
     if (!file_exists($cacheFile)) save_cache($cacheFile, $source);
     exit(0);
@@ -332,7 +387,8 @@ foreach ($batches as $idx => $batch) {
 // 8️⃣ Обновляем кэш и лог
 save_cache($cacheFile, $source);
 
-$log("OK updated | Total SKUs=$totalSkus | Existing=$totalExisting | Total Updated=$totalUpdated | Sent=$sentCount | Missing=$missing | Failed=$failed");
+$linesCountLog = $priceListLinesCurrent === null ? 'unknown' : (string)$priceListLinesCurrent;
+$log("OK updated | Total SKUs=$totalSkus | ExistingProductsGlobal=$totalExisting | PriceListLinesCurrent=$linesCountLog | Total Updated=$totalUpdated | Sent=$sentCount | Missing=$missing | Failed=$failed");
 if ($forceAll) {
     $log("SK vysvetlenie: Bezi force rezim, skript odosiela vsetky ceny z feedu bez porovnavania s cache.");
 }
