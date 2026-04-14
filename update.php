@@ -124,7 +124,7 @@ function fetch_xml(string $url, int $timeout = 30, bool $verifySSL = true): stri
     return $resp;
 }
 
-function parse_prices_from_xml(string $xmlText): array {
+function parse_prices_from_xml(string $xmlText, string $priceListCode): array {
     libxml_use_internal_errors(true);
     $xml = simplexml_load_string($xmlText);
     if ($xml === false) {
@@ -133,9 +133,10 @@ function parse_prices_from_xml(string $xmlText): array {
     }
     $result = [];
     $products = $xml->xpath('//PRODUKT');
+    $priceNodeName = $priceListCode === 'price_ron' ? 'MOC_RO' : 'MOC_EUR';
     foreach ($products as $p) {
         $skuNode   = $p->KOD_TOVARU ?? null;
-        $priceNode = $p->MOC_EUR ?? null;
+        $priceNode = $p->{$priceNodeName} ?? null;
         if ($skuNode === null || $priceNode === null) continue;
         $sku = trim((string)$skuNode);
         if ($sku === '') continue;
@@ -202,7 +203,7 @@ try {
 
 // 2️⃣ Парсим XML
 try {
-    $source = parse_prices_from_xml($xml);
+    $source = parse_prices_from_xml($xml, $priceListCode);
 } catch (Throwable $e) {
     log_prepend($logFile, "ERROR parse: " . $e->getMessage());
     exit(3);
