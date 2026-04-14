@@ -188,8 +188,12 @@ $dryRunRaw = getenv('SYNC_DRY_RUN');
 $dryRun = $dryRunRaw === false ? CONFIG['dryRun'] : filter_var($dryRunRaw, FILTER_VALIDATE_BOOLEAN);
 $forceAllRaw = getenv('SYNC_FORCE_ALL');
 $forceAll = $forceAllRaw !== false && filter_var($forceAllRaw, FILTER_VALIDATE_BOOLEAN);
+$logContext = "priceList=$priceListCode | source=$sourceUrl";
+$log = static function (string $line) use ($logFile, $logContext): void {
+    log_prepend($logFile, "[$logContext] $line");
+};
 if ($company === '' || $privateKey === '') {
-    log_prepend($logFile, 'ERROR auth config: missing PRODBOARD_COMPANY or PRODBOARD_PRIVATE_KEY');
+    $log('ERROR auth config: missing PRODBOARD_COMPANY or PRODBOARD_PRIVATE_KEY');
     exit(4);
 }
 
@@ -197,7 +201,7 @@ if ($company === '' || $privateKey === '') {
 try {
     $xml = fetch_xml($sourceUrl, CONFIG['timeoutSeconds'], CONFIG['verifySSL']);
 } catch (Throwable $e) {
-    log_prepend($logFile, "ERROR fetch: " . $e->getMessage());
+    $log("ERROR fetch: " . $e->getMessage());
     exit(2);
 }
 
@@ -205,7 +209,7 @@ try {
 try {
     $source = parse_prices_from_xml($xml, $priceListCode);
 } catch (Throwable $e) {
-    log_prepend($logFile, "ERROR parse: " . $e->getMessage());
+    $log("ERROR parse: " . $e->getMessage());
     exit(3);
 }
 $totalSkus = count($source);
@@ -223,11 +227,11 @@ $authResp = http_request_json(
     CONFIG['verifySSL']
 );
 if (!$authResp['ok']) {
-    log_prepend($logFile, "ERROR auth HTTP={$authResp['status']} RESP={$authResp['raw']}");
+    $log("ERROR auth HTTP={$authResp['status']} RESP={$authResp['raw']}");
     exit(4);
 }
 $token = trim($authResp['raw'], "\" \n\r\t");
-log_prepend($logFile, "OK auth | token length=" . strlen($token));
+$log("OK auth | token length=" . strlen($token));
 
 // 5️⃣ Получаем список всех существующих товаров
 $existing = [];
@@ -243,7 +247,7 @@ while (true) {
         CONFIG['verifySSL']
     );
     if (!$resp['ok']) {
-        log_prepend($logFile, "ERROR products page#$page HTTP={$resp['status']}");
+        $log("ERROR products page#$page HTTP={$resp['status']}");
         break;
     }
     $data = json_decode($resp['raw'], true);
@@ -257,7 +261,7 @@ while (true) {
     if (count($data['items']) < 100) break;
 }
 $totalExisting = count($existing);
-log_prepend($logFile, "OK fetched products | total existing=$totalExisting");
+$log("OK fetched products | total existing=$totalExisting");
 
 // 6️⃣ Сравниваем данные
 $updates = [];
@@ -279,8 +283,8 @@ foreach ($source as $sku => $price) {
 
 $totalUpdated = count($updates);
 if ($totalUpdated === 0) {
-    log_prepend($logFile, "OK no changes | Total SKUs=$totalSkus | Existing=$totalExisting");
-    log_prepend($logFile, "SK vysvetlenie: Beh je v poriadku, prihlasenie a nacitanie produktov prebehlo uspesne, ale nebola najdena ziadna zmena cien na odoslanie.");
+    $log("OK no changes | Total SKUs=$totalSkus | Existing=$totalExisting");
+    $log("SK vysvetlenie: Beh je v poriadku, prihlasenie a nacitanie produktov prebehlo uspesne, ale nebola najdena ziadna zmena cien na odoslanie.");
     if (!file_exists($cacheFile)) save_cache($cacheFile, $source);
     exit(0);
 }
@@ -314,10 +318,10 @@ foreach ($batches as $idx => $batch) {
         $raw = trim($resp['raw']);
         if ($status === 422 && stripos($raw, 'entity-not-found') !== false) {
             $failed += count($batch);
-            log_prepend($logFile, "WARN missing product: " . $batch[0]['product']);
+            $log("WARN missing product: " . $batch[0]['product']);
             continue;
         }
-        log_prepend($logFile, "ERROR push batch#" . ($idx + 1) . " HTTP=$status RESP=$raw");
+        $log("ERROR push batch#" . ($idx + 1) . " HTTP=$status RESP=$raw");
         continue;
     }
 
@@ -328,16 +332,10 @@ foreach ($batches as $idx => $batch) {
 // 8️⃣ Обновляем кэш и лог
 save_cache($cacheFile, $source);
 
-log_prepend(
-    $logFile,
-    "OK updated | Total SKUs=$totalSkus | Existing=$totalExisting | Total Updated=$totalUpdated | Sent=$sentCount | Missing=$missing | Failed=$failed"
-);
+$log("OK updated | Total SKUs=$totalSkus | Existing=$totalExisting | Total Updated=$totalUpdated | Sent=$sentCount | Missing=$missing | Failed=$failed");
 if ($forceAll) {
-    log_prepend($logFile, "SK vysvetlenie: Bezi force rezim, skript odosiela vsetky ceny z feedu bez porovnavania s cache.");
+    $log("SK vysvetlenie: Bezi force rezim, skript odosiela vsetky ceny z feedu bez porovnavania s cache.");
 }
-log_prepend(
-    $logFile,
-    "SK vysvetlenie: Beh je v poriadku, ceny boli porovnane a zmenene polozky boli odoslane do cennika. Hodnota Sent znamena pocet uspesne odoslanych riadkov."
-);
+$log("SK vysvetlenie: Beh je v poriadku, ceny boli porovnane a zmenene polozky boli odoslane do cennika. Hodnota Sent znamena pocet uspesne odoslanych riadkov.");
 
 exit(0);
