@@ -129,6 +129,7 @@ function resolve_price_node_name(string $priceListCode): string {
         'price_ron' => 'MOC_RO',
         'price_czk' => 'MOC_CZ',
         'price_huf' => 'MOC_HU',
+        'price_hr'  => 'MOC_HR',
         'price'     => 'MOC_EUR',
         'price_test'=> 'MOC_EUR',
     ];

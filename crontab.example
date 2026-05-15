@@ -1,0 +1,12 @@
+# Kondela → Prodboard price sync
+# Skopíruj do crontab -e a uprav:
+#   /path/to/kondela  → absolútna cesta k projektu
+#   /usr/bin/php      → cesta k PHP binárke na serveri
+#
+# Časové pásmo crontabu závisí od systému; odporúčané nastavenie TZ=Europe/Bratislava.
+
+0 3 * * * cd /path/to/kondela && /usr/bin/php update_price.php >> /var/log/kondela_cron.log 2>&1
+5 3 * * * cd /path/to/kondela && /usr/bin/php update_czk.php   >> /var/log/kondela_cron.log 2>&1
+10 3 * * * cd /path/to/kondela && /usr/bin/php update_ron.php  >> /var/log/kondela_cron.log 2>&1
+15 3 * * * cd /path/to/kondela && /usr/bin/php update_huf.php  >> /var/log/kondela_cron.log 2>&1
+20 3 * * * cd /path/to/kondela && /usr/bin/php update_hr.php   >> /var/log/kondela_cron.log 2>&1
